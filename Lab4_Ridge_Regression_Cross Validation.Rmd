@@ -1,0 +1,179 @@
+---
+title: 'Lab 4: Ridge Regression and Cross Validation'
+author: "Weichen Li"
+date: "3/29/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+# Section 0: Goal of Lab 4
+
+The goal of Lab 4 is to help solidify k-fold cross validation applied to `Ridge Regression`. The next few sections describe limitations to OLS and a brief introduction to ridge regression.  Note that we will cover this topic in more detail during the upcoming lecture. 
+
+# Section 1: Limitations of Ordinary Least Squares
+
+Consider the multiple linear regression model:
+$$
+Y_i=\beta_1 x_{i1}+\beta_2 x_{i2} + \cdots + \beta_p x_{ip} + \epsilon_i, \ \ \ \epsilon_i\overset{iid}{\sim}N(0,\sigma^2), \ \ \ i=1,2,\ldots,n.
+$$
+For simplicity, the above model does not include the bias (or intercept) $\beta_0$. Let $\mathbf{X}$ be the $(n \times p)$ design matrix and $\mathbf{Y}$ be the $(n \times 1)$ response vector. Recall that the least squares estimator 
+$$
+\hat{\mathbf{\beta}}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T \mathbf{Y}
+$$
+has a solution provided $(\mathbf{X}^T\mathbf{X})^{-1}$ exists. If the rank of $\mathbf{X}$ is less than $p$, then $(\mathbf{X}^T\mathbf{X})^{-1}$ does not exist. Consequently when the features are highly correlated with each other, the inverse of $(\mathbf{X}^T\mathbf{X})$ becomes highly unstable because $\mathbf{X}$ behaves similarly to a rank deficient matrix.  
+
+In the high dimensional case ($p>n$), the rank of $\mathbf{X}$ is less than or equal to $n$ and hence, $(\mathbf{X}^T\mathbf{X})^{-1}$ does not exist. 
+
+To illustrate the high dimensional case ($p>n$), consider the following dataset **Lab4_data.csv**.  Notice that there are $p=160$ features and only $n=150$ cases. 
+
+```{r}
+data.train <- read.csv("Lab4_data.csv")
+
+# dim = (n by p+1). p+1 = 160 features and the last column is Y
+dim(data.train) 
+
+# display the first and last 6 variable names in the dataset
+head(colnames(data.train))
+tail(colnames(data.train))
+```
+
+Even in this rank deficient case, we can still use the linear model function **lm()** to estimate our slopes; however, the returned output is not very useful. 
+
+**Perform the following task:**
+
+1) Uncomment the following code and briefly describe what the **lm()** function returns based on the data **data.train**.  Note that the intercept is dropped in the below code. 
+```{r}
+lm(Y~.+0,data=data.train)$coefficients
+```
+
+
+# Section 2: Ridge Regression
+
+This section provides a brief introduction to `Ridge Regression`, which regularizes the least squares equation so that the inverse exists in rank deficient models. Consider the `Ridge Regression Objective`:
+\begin{align*}
+Q^R(\beta) & = Q^R(\beta_1,\beta_2,\ldots,\beta_p) \\
+& =\sum_{i=1}^n (y_i-(\beta_1 x_{i1}+\beta_2 x_{i2} + \cdots + \beta_p x_{ip}))^2+\lambda \sum_{j=1}^p \beta^2_j \\
+&= \| \mathbf{Y-X\beta} \|^2_2 + \lambda \| \mathbf{\beta} \|^2_2, \ \ \ \lambda>0.  
+\end{align*}
+The first term $\| \mathbf{Y-X\beta} \|^2_2$ is the traditional OLS objective. The regularization term $\lambda \| \mathbf{\beta} \|^2_2$ forces a constraint on the size of the slopes $\beta_j$'s.  The tuning parameter $\lambda>0$ dictates how much `shrinkage` or how small the $\beta_j$'s should be. If $\lambda=0$, this produces the traditional OLS objective.  As $\lambda \rightarrow \infty$, this forces all $\beta_j \rightarrow 0$. Larger values of the tuning parameter $\lambda$ produce a more `regularized` model.  
+
+Notice that the penalty term $\lambda \| \mathbf{\beta} \|^2_2$ is differentiable.  Similar to OLS, we can analytically solve for the minimum of $Q^R(\beta)$:
+\begin{align*}
+\nabla Q^R(\beta) &= -2 \mathbf{X} ^T (\mathbf{Y}-\mathbf{X}\beta)+ 2 \lambda \beta \\
+& = -2\mathbf{X} ^T \mathbf{Y} +2\mathbf{X}^T\mathbf{X}\beta+2\lambda \beta \\
+& \overset{set}{=} 0. 
+\end{align*}
+Thus the closed form ridge regression least squares solution is:  
+$$
+\hat{\mathbf{\beta}}^R=(\mathbf{X}^T\mathbf{X}+\lambda I)^{-1}\mathbf{X}^T \mathbf{Y}. 
+$$
+**Perform the following task:**
+
+2) Write a function named **my.ridge()** that computes the estimated ridge coefficients $\hat{\mathbf{\beta}}^R$ as a function of the training data **data.train** and the tuning parameter **lambda**.  I recommend scaling all of the features before applying the ridge LS equation. Test the function using **data.train** and $\lambda=.1$.  Your answer should be a vector of length $p=160$. Also test the function using tuning parameters $\lambda=.5,1,10$. Compute $\sum_{j=1}^{160}\hat{\beta}_j^2$ for $\lambda=.1,.5,1,10$ and comment on how this quantity changes for different values of $\lambda>0$. 
+
+
+**Solution**
+```{r}
+my.ridge <- function(data.train=data.train,lambda) {
+  Y<-as.matrix(data.train$Y)
+  X<-as.matrix(data.train[,1:ncol(data.train)-1])
+  Y.s=Y
+  X.s=X
+  n=nrow(X)
+  for(i in  1:ncol(data.train)-1){
+  X.s[,i] = scale(X.s[,i])*(1/sqrt(n-1))
+  }
+  Y.s= scale(Y.s)*(1/sqrt(n-1))
+  
+
+  I<-diag(1,ncol(data.train)-1)
+  beta.star <- (solve(t(X.s)%*%X.s+lambda*I)%*%t(X.s)%*%Y.s)
+  beta.R<-rep(0,length(beta.star))
+  for (i in 1:length(beta.R)) {
+    beta.R[i] <- beta.star[i]*(sd(Y)/sd(X[,i]))
+  }
+  return(beta.R)
+}
+
+
+```
+
+
+```{r}
+beta.R <- my.ridge(data.train=data.train,lambda=.1)
+sum(beta.R^2)
+beta.R <- my.ridge(data.train=data.train,lambda=.5)
+sum(beta.R^2)
+beta.R <- my.ridge(data.train=data.train,lambda=1)
+sum(beta.R^2)
+beta.R <- my.ridge(data.train=data.train,lambda=10)
+sum(beta.R^2)
+```
+This quality decrease when lambda increase.
+
+# Section 3: Cross Validation 
+
+**Perfrome the following tasks:**
+
+3) Run a `5-fold cross validation` on this dataset.  Select your `best` tuning parameter $\lambda=\lambda^*$ by minimizing the CV error.  Note that you are not using the `1-SD rule` from class. Construct a plot of the 5-fold cross validation error as a function of $\lambda$. Each fold will have $|B_k|=150/5=30$ cases. Note that the CV error is computed using squared loss. To get started, the following code chooses the 5-folds at random.
+
+```{r}
+set.seed(0)
+folds <- sample(rep(1:5,30),150)
+#folds
+table(folds)
+```
+
+```{r}
+k = 5
+cv.err = function(lambda){
+err = rep(NA, k)
+n = ncol(data.train)
+for (i in 1:k){
+  train = data.train[folds != i,]
+  test = data.train[folds == i,]
+  test = as.matrix(test)
+  b = my.ridge(train, lambda)
+  b0 = as.numeric(mean(train$Y) - b %*% (colMeans(train[,1:n-1])))
+  pred = b0 + test[, 1:n-1] %*% b
+  err[i] = mean((pred-test[,n])^2)
+}
+return(mean(err))
+}
+lambda = seq(0.001, 0.5, 0.005)
+cv.error = rep(NA, length(lambda))
+for (i in 1:length(lambda)){
+cv.error[i] = cv.err(lambda[i])
+}
+# best tuning parameter
+l = lambda[which.min(cv.error)] 
+l
+```
+
+
+
+4) Based on the tuning parameter $\lambda=\lambda^*$ from part (3), retrain your ridge regression model using the full training set. Compute the test error based on the holdout set **Lab4_test.csv**. Note that the test error is computed using squared loss.    
+
+
+```{r}
+library(dplyr)
+library(purrr)
+data.test <- read.csv(file="Lab4_test.csv")
+error<-function(x,y,beta.R){
+sum((y-x%*%beta.R)^2)
+}
+beta.R<-my.ridge(data.train = data.train,lambda = 0.210)
+Y.test<-data.test$Y
+X.test<-data.test[,-ncol(data.test)] %>%
+as.matrix()
+loss<-error(x=X.test,y=Y.test,beta=beta.R)
+loss
+```
+  
+  
+
+
+

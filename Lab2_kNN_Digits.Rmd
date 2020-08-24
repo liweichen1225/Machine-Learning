@@ -1,0 +1,236 @@
+---
+title: 'Lab 2: Digits and kNN'
+author: "Weichen Li"
+date: "February 10, 2020"
+output:
+  pdf_document: default
+  html_notebook: default
+  word_document: default
+  html_document: default
+---
+
+# Section I: Lab 2 Objective
+
+The objective of Lab 2 is to have students write their own kNN-classification algorithm applied to a binary response. Their final kNN-classifier should predict several test cases based on training datamatrix $X$ (having $p>0$ features), and a training response vector $Y$.  Students will then apply their kNN-function to the famous `ZIPcode` dataset described in the class textbook (ESL). More specifically, your classifier will predict if a handwritten digit is a `3` or `5`, based on the digit's pixels represented as grey scale values. The required tasks are described in Sections III, V, VI. 
+
+**Note:** The `blackbox` kNN-function from the R library **class** (or similar) will run faster than the manual kNN-function written in this lab because it was written in a lower level programming language. With that said, after completing this lab, I encourage for students to utilize the kNN packages. This lab is intended to assess students' understanding of the kNN classification method and is not intended to assess your function's runtime. 
+
+
+# Section II: Data Description and Exploratory Analysis
+
+A single image (or single handwritten digit) is represented by a vector of length $256=16\times 16$ pixels, where each pixel is numeric ranging from $[-1,1]$ (**Note:** $``-1=\text{white}"$ and $\ ``1=\text{black}"$). Each pixel of an image is a feature, therefore $p=256$. The text file **zip3.txt** contains 658 observations (or images) for handwritten `3's` and the text file **zip5.txt** contains 556 observations (or images) for handwritten `5's`. The observed features are represented by the columns of **zip.3** and **zip.5**, and hence the data matrix of features **X.full.zip** has dimension $(1214 \times 256)$.  The response vector **Y.full.zip** is categorical consisting of labels `Three` and `Five`.  **Note that the below code chunk is hidden.**
+
+```{r,echo=F}
+### all images corresponding to digit "3"
+zip.3 <- read.table("zip3.txt", header=FALSE, sep=",")
+zip.3 <- as.matrix(zip.3)
+### all images corresponding to digit "5"
+zip.5 <- read.table("zip5.txt", header=FALSE, sep=",")
+zip.5 <- as.matrix(zip.5)
+### n.3 and n.5 are the total number of "3"s and "5"s, respectively. 
+n.3 <- length(zip.3[,1])
+n.5 <- length(zip.5[,1])
+### combine two data sets together 
+X.full.zip <-rbind(zip.3,zip.5)
+dim(X.full.zip)
+
+### define response (labels)
+Y.full.zip <- c(rep("Three",n.3),rep("Five",n.5))
+length(Y.full.zip)
+```
+
+The function **output.image()** allows us to visualize the data. The input is a vector of length 256.  **Note that the below code chunk is hidden.**
+
+```{r,echo=F}
+output.image<-function(vector) {
+	digit<-matrix(vector, nrow=16, ncol=16)
+	#index= seq(from=1, to =16, by=1)
+	index= seq(from=16, to =1, by=-1)
+	sym_digit = digit[,index]
+	image(sym_digit, col= gray((8:0)/8), axes=FALSE)
+}
+```
+
+Visualize the first 25 images of 3's and 5's. **Note that the below code chunk is hidden.**
+```{r,echo=F}
+par(mfrow=c(5,5),mai=c(0.1,0.1,0.1,0.1))
+for(i in 1:25) {
+	output.image(zip.3[i,])
+}
+```
+
+```{r,echo=F}
+par(mfrow=c(5,5),mai=c(0.1,0.1,0.1,0.1))
+for(i in 1:25) {
+  output.image(zip.5[i,])
+}
+```
+
+
+# Section III: Data-Splitting
+
+1) The first task is to randomly split **X.full.zip** and **Y.full.zip** into two a training set and a test set. The test set should be approximately 20\% of the full dataset.   
+
+```{r}
+## Solution goes here ---------
+set.seed(0)
+train_index <- sample(1:length(Y.full.zip), 0.8 * length(Y.full.zip))
+# Build X_train, y_train, X_test, y_test
+X_train <- X.full.zip[train_index,]
+y_train <- Y.full.zip[train_index]
+X_test <- X.full.zip[-train_index,]
+y_test <- Y.full.zip[-train_index]
+```
+
+# Section IV: Toy Data and 2-Feature kNN Function 
+
+First consider the toy data below, constructed from the famous **iris** dataset. The variables **Sepal.Length** \& **Sepal.Width** are the columns of feature matrix **X.example**. The dichotomous response **Y.example** takes on species labels **versicolor** \& **virginica**.
+
+
+```{r}
+# Create basic training data from iris
+X.example <- as.matrix(iris[51:150,1:2])
+Y.example <- as.character(iris[51:150,5])
+head(X.example,3)
+head(Y.example,3)
+```
+
+The function **KNN.decision()** classifies a single test case **x.test** using the kNN-classification algorithm. This function is slightly modified from the in-class example. Notice that the distance vector is hard coded and is applicable for **only** two features ($p=2$). Also notice that this function only classifies a single test case **x.test**.   
+
+```{r}
+# kNN function
+KNN.decision <- function(x.test,
+                         X.data,
+                         Y.data,
+                         K = 5) {
+  #n <- nrow(X.data)
+  dists.vec <- sqrt((x.test[1]- X.data[,1])^2 + (x.test[2]-X.data[,2])^2)
+  neighbors  <- order(dists.vec)[1:K]
+  neighb.dir <-  Y.data[neighbors]
+  choice     <- names(which.max(table(neighb.dir)))
+  return(choice)
+}
+```
+
+To see this function in action, evaluate **KNN.decision()** at the two test cases $x^t_{1}=\begin{pmatrix} 5.5 & 3.0 \end{pmatrix}$ \& $x^t_{2}=\begin{pmatrix} 7.5 & 3 \end{pmatrix}$,
+and plot the predicted values with the toy dataset. 
+
+```{r}
+# Evaluate kNN.decision() at x.test.1: 
+x.test.1 <- c(5.5,3.0)
+p1.choice <- KNN.decision(x.test=x.test.1,
+                          X.data=X.example,
+                          Y.data=Y.example,
+                          K=5)
+p1.choice
+
+# Evaluate kNN.decision() at x.test.2: 
+x.test.2 <- c(7.5,3)
+p2.choice <- KNN.decision(x.test=x.test.2,
+                          X.data=X.example,
+                          Y.data=Y.example,
+                          K=5)
+p2.choice
+
+# Plot X2 versus X1 with the test points
+plot(X.example[,1],
+     X.example[,2],
+     xlab="X1",
+     ylab="X2",
+     col=factor(Y.example))
+col1 <- ifelse(p1.choice=="versicolor",1,2)
+points(x.test.1[1],x.test.1[2],pch="*",cex=3,col=col1)
+text(x.test.1[1],x.test.1[2]+.1,labels=p1.choice,cex=.6,col=col1)
+col2 <- ifelse(p2.choice=="versicolor",1,2)
+points(x.test.2[1],x.test.2[2],pch="*",cex=3,col=col2)
+text(x.test.2[1],x.test.2[2]+.1,labels=p2.choice,cex=.6,col=col2)
+legend("topleft",legend=levels(factor(Y.example)),
+       fill=1:2,cex=.75)
+```
+
+
+# Section V: Modify KNN Function
+
+2) Your second task is to modify **KNN.decision()** so it generalizes to any binary classifier. Technically we will only consider numeric features, i.e., no categorical training data. To accomplish this task, your modified kNN-function must be able to: (i) train the model for $p>0$ features, and (ii) classify several test cases at once. 
+Also name your modified function something different than **KNN.decision()**. 
+
+
+```{r}
+## Solution goes here ---------
+KNN.decision <- function(x.test,
+X.data,
+Y.data,
+K = 5) {
+#n <- nrow(X.data)
+choice=c()
+for (i in 1:nrow(x.test)){
+5
+dists.vec <- sqrt(rowSums(t(x.test[i,]-t(X.data))^2))
+neighbors <- order(dists.vec)[1:K]
+neighb.dir <- Y.data[neighbors]
+choice <- c(choice,names(which.max(table(neighb.dir))))
+}
+return(choice)
+}
+test <- as.matrix(data.frame(x1=c(7.5,5.5),x2=c(3,3)))
+choice <- KNN.decision(x.test=test,
+X.data=X.example,
+Y.data=Y.example,
+K=5)
+choice
+```
+
+
+3) For the third task, use your kNN function to compute the test error and training error based on the split data from Section III. Choose $K=5$ to compute the test error and training error. 
+
+
+```{r}
+## Solution goes here ---------
+choice.train <- KNN.decision(x.test=X_train,
+X.data=X_train,
+Y.data=y_train,
+K=5)
+train.error <- sum(choice.train!=y_train)/length(y_train)
+train.error
+
+choice.test <- KNN.decision(x.test=X_test,
+X.data=X_train,
+Y.data=y_train,
+K=5)
+test.error <- sum(choice.test!=y_test)/length(y_test)
+test.error
+```
+
+
+# Section VI: Tuning Parameter
+
+4) The final task requires students to compute the training error and test error for several odd values of $k$. Plot both training and test error as a function of $k$. Try choosing values of $k$ at least equal to the vector $1,3,5,7,9,11$.  
+
+```{r}
+## Solution goes here ---------
+k <- c(1,3,5,7,9,11,13,15)
+train.error <- c()
+test.error <- c()
+for (i in k){
+choice.train <- KNN.decision(x.test=X_train,
+X.data=X_train,
+Y.data=y_train,
+K=i)
+train.error <- c(train.error,sum(choice.train!=y_train)/length(y_train))
+choice.test <- KNN.decision(x.test=X_test,
+X.data=X_train,
+Y.data=y_train,
+K=i)
+test.error <- c(test.error,sum(choice.test!=y_test)/length(y_test))
+}
+
+plot(k, train.error,col="green", xlab = "k", ylab = "error",ylim=c(0,0.04))
+lines(k, train.error,col="green")
+points(k, test.error,col="red")
+lines(k, test.error,col="red")
+title("training error and test error")
+legend("topleft",
+legend = c("training error","test error"),
+fill = c("green","red"))
+```
+

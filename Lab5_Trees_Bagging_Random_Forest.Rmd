@@ -1,0 +1,136 @@
+---
+title: "Lab 5: Tress, Bagging, Random Forest"
+author: "Weichen Li"
+date: "4/12/2020"
+output: pdf_document
+---
+
+The goal of Lab 5 is to classify handwritten digits using decision trees, boosting and random forests.  This is the same handwritten digits data from Homework 4 and previous assignments. The data contains two classes, i.e., digits 5 and 6.  
+
+This lab is straightforward compared to previous assignments. Students are required to utilize packages as opposed to manually coding the algorithms. 
+
+
+# Problem 0: Load in Data
+
+Load in the data and make sure your training set has 1220 rows and 257 columns, where the last column is the response variable $Y$ consisting of class labels `5` and `6`. The test data should have 330 rows and 257 columns. 
+
+
+```{r}
+# Solution goes here ----------------------
+library(tidyverse)
+library(rpart)
+train5 = read.table("train_5.txt", header = F, sep=",") %>% as.data.frame()
+train6 = read.table("train_6.txt", header = F, sep=",") %>% as.data.frame()
+zip.test = read.table("zip_test.txt", header = F) %>% as.data.frame()
+title = c(rep(5, nrow(train5)), rep(6, nrow(train6)))
+total = rbind(train5, train6)
+train = data.frame(Y = as.factor(title), total)
+test = zip.test %>% filter(V1 %in% c(5,6))
+name.test = c("Y", names(test[1:256]))
+names(test) = name.test
+test$Y = as.factor(test$Y)
+```
+
+
+# Problem 1: Decesion Tree
+
+Run a decision tree on the training set classifying the digits `5` and `6`. Plot the decision tree displaying all nodes and stems. You can use the default parameters provided by the decision tree function, i.e., tuning the model is not required for this assignment.  Use either `Gini index` or `cross entropy` as the splitting criterion.  Also compute the test error based on your trained decision tree and holdout test set. 
+
+**Note:** I used the **rpart** library to solve this problem. You can use whatever you want. 
+
+```{r}
+# Solution goes here ----------------------
+dtree = rpart(Y ~ ., data = train, parms = list(split = 'information'))
+plot(dtree)
+text(dtree, cex = 0.5)
+dtree.pred = predict(dtree, test, type = "class") # why not need $type = "class"$
+mean(dtree.pred != test$Y)
+```
+
+# Problem 2: Bagging
+
+Run a bagging procedure by bootstrapping decision trees for $b=1,2,\ldots,10=B$ boot iterations. Also consider $B=100$ and $B=200$ boot iterations.  Compute the test error of the bagging procedure by majority vote. Compare the bagging test errors for $B=10,100,200$. Does the bagging test error change with higher bootstrap samples? 
+
+**Note:** students can solve this problem by finding a bagging package or manually bootstrapping the **rpart()** function, or similar.  
+
+
+```{r}
+# Solution goes here ----------------------
+bagging = function(B) {
+n = nrow(train)
+#fit.list = list(B)
+fit.pred = mat.or.vec(nrow(test), B)
+if (B > 1) {
+for (i in 1:B){
+idx = sample(1:n, n, replace = T)
+train.temp = train[idx,] # new training data
+fit.temp = rpart(Y ~ ., train.temp, parms=list(split='information'))
+#fit.list[[i]] = fit.temp
+fit.pred[,i] = predict(fit.temp, test, type = "class")
+}
+bag.pred = mat.or.vec(nrow(test), 1)
+for (i in 1:nrow(test)){
+n.temp = mean(fit.pred[i,])
+if (round(n.temp)==2) bag.pred[i] = 6
+else bag.pred[i] = 5
+}
+}
+else{
+idx = sample(1:n, n, replace = T)
+train.temp = train[idx,]
+fit.temp = rpart(Y ~ ., train.temp, parms=list(split='information'))
+fit.pred = predict(fit.temp, test, type = "class")
+bag.pred = ifelse(fit.pred == 1, 5, 6)
+}
+return(mean(bag.pred != test$Y))
+}
+bagging(1)
+B = c(1:10, 100, 200)
+test.error = rep(NA, length(B))
+for (i in 1:length(B)){
+test.error[i] = bagging(B[i])
+}
+
+test.error
+```
+The bagging test error not always decrease with higher bootstrap samples. 
+
+# Problem 3: Random Forests
+
+Look ahead in the slides (Set 18) to learn about random forests. Run a random forests algorithm using $B=200$ trees and report the test error. You can use the default inputs or play around with the tuning parameters if desired.   
+
+```{r}
+# Solution goes here ----------------------
+library(randomForest)
+n = nrow(train)
+rf.pred1 = mat.or.vec(nrow(test), 200)
+for (b in 1:200){
+  idx = sample(1:n, n, replace = T)
+  rf.temp = train[idx,]
+  fit.rf.temp = randomForest(Y ~ ., data = rf.temp)
+  rf.pred1[,b] = predict(fit.rf.temp, test)
+}
+rf.pred = mat.or.vec(nrow(test), 1)
+for (i in 1:nrow(test)){
+n.temp = mean(rf.pred1[i,])
+if (round(n.temp)==2) rf.pred[i] <- 6
+else rf.pred[i] <- 5
+}
+rf.error = mean(rf.pred != test$Y)
+```
+
+
+# Problem 4: Compare Results
+
+Compare the results and comment on the performance of each method. 
+
+
+```{r}
+# Solution goes here ----------------------
+# error of bagging with B=200
+test.error[12]
+# error of random forest with B=200
+rf.error
+```
+Random forest has better performance.
+The random forest algorithm is actually a bagging algorithm: also here, we draw random bootstrap samples from your training set. However, in addition to the bootstrap samples, we also draw random subsets of features for training the individual trees; in bagging, we provide each tree with the full set of features. Due to the random feature selection, the trees are more independent of each other compared to regular bagging, which often results in better predictive performance (due to better variance-bias trade-offs), and I’d say that it’s also faster than bagging, because each tree learns only from a subset of features.
