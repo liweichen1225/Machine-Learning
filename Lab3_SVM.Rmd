@@ -1,0 +1,195 @@
+---
+title: "SVM"
+author: "Weichen Li"
+date: "3/12/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Part I
+
+## Toy data and basic SVM
+
+```{r}
+data1 <- cbind(seq(1,10,by=2),seq(1,10,by=2))
+classes1 <- c('a','a','a','b','b')
+plot(data1[(classes1=="b"),1],data1[(classes1=="b"),2],
+       col="blue",xlim=c(0,11),ylim=c(0,11),xlab="x1",ylab="x2")
+points(data1[(classes1=="a"),1],data1[(classes1=="a"),2],col="red")
+```
+
+## e1071 Package
+
+Note that the radial basis kernel is the default in **svm()**. 
+
+```{r}
+install.packages("e1071")
+library(e1071)
+model1 <- svm(data1,classes1,type='C',kernel='linear')
+#print(model1)
+#summary(model1)
+pred <- fitted(model1)
+table(pred, classes1)
+```
+
+## Toy test data
+
+```{r}
+test1 <- cbind(seq(1,10,by=2) + 1,seq(1,10,by=2) + 1)
+test.pred <- predict(model1,test1)
+
+plot(data1[(classes1=="b"),1],data1[(classes1=="b"),2],
+       col="blue",xlim=c(0,11),ylim=c(0,11),xlab="x1",ylab="x2")
+points(data1[(classes1=="a"),1],data1[(classes1=="a"),2],col="red")
+
+points(test1[(test.pred=="a"),1],test1[(test.pred=="a"),2],
+         col="red",pch=5)
+points(test1[(test.pred=="b"),1],test1[(test.pred=="b"),2],
+         col="blue",pch=5)
+```
+
+## R SVM plot
+
+Note that the X's are support vectors and O's are not. 
+
+```{r}
+# Plot using plot()
+data.full <- data.frame(X1=data1[,1],X2=data1[,2],class=classes1)
+m <- svm(class~., data = data.full,kernel="linear")
+plot(m, data.full)
+```
+
+
+# SVM with Gaussian simulated data
+
+```{r}
+xTrain1 <- cbind(rnorm(100,1),rnorm(100,1))
+xTrain2 <- cbind(rnorm(100,-1),rnorm(100,-1))
+xTrain <- rbind(xTrain1,xTrain2)
+xTrain.class <- c(rep("a",100),rep("b",100))
+plot(xTrain[(xTrain.class=="a"),1],xTrain[(xTrain.class=="a"),2],
+       col="red",xlim=c(min(xTrain[,1]),max(xTrain[,1])),
+       ylim=c(min(xTrain[,2]),max(xTrain[,2])),xlab="x1",ylab="x2")
+points(xTrain[(xTrain.class=="b"),1],xTrain[(xTrain.class=="b"),2],
+         col="blue")
+```
+
+
+Note that the X's are support vectors and O's are not. This might look strange because of the slack variables. 
+
+```{r}
+xTest <- data.frame(X1=rnorm(500,0,2),X2=rnorm(500,0,2))
+data.full <- data.frame(X1=xTrain[,1],X2=xTrain[,2],class=xTrain.class)
+model.gsn <- svm(class~., data = data.full,
+                 type="C",kernel="linear")
+y.pred.gsn <- predict(model.gsn,xTest)
+plot(model.gsn,data.full)
+```
+
+
+# Part II
+
+
+## Cats data, try different kernels 
+
+Note that the radial basis kernel is the default in **svm()**.  Let's compare a few kernels. Practical issues: Changing the bandwidth, choosing bandwidth. 
+
+```{r}
+data(cats, package = "MASS")
+head(cats)
+# Linear kernel
+m.cats <- svm(Sex~., data = cats,kernel="linear")
+plot(m.cats,cats)
+
+# Radial kernel
+m.cats <- svm(Sex~., data = cats,
+              kernel="radial")
+plot(m.cats,cats)
+
+# Radial kernel gamma=2
+# sigma^2=1/4, gamma=1/(2*(1/4))
+m.cats <- svm(Sex~., data = cats,
+              kernel="radial",gamma=2)
+plot(m.cats,cats)
+
+
+# Radial kernel gamma=1/8
+# sigma^2=4, gamma=1/(2*4)
+m.cats <- svm(Sex~., data = cats,
+              kernel="radial",gamma=1/8)
+plot(m.cats,cats)
+
+
+# Poly kernel
+m.cats <- svm(Sex~., data = cats,
+              kernel="polynomial")
+plot(m.cats,cats)
+
+# Poly kernel degree=1
+m.cats <- svm(Sex~., data = cats,
+              kernel="polynomial",degree=1)
+plot(m.cats,cats)
+
+# Poly kernel degree=3
+m.cats <- svm(Sex~., data = cats,
+              kernel="polynomial",degree=3)
+plot(m.cats,cats)
+```
+
+
+
+```{r}
+
+data(cats, package = "MASS")
+# Fit SVM classifier with RBFs
+m <- svm(Sex~., data = cats,kernel="linear")
+# Plot the decision boundaries
+# X's are support vectors, O's are not
+plot(m, cats)
+# What if we use a different kernel? Or change the bandwidth?
+
+
+m <- svm(Sex~., data = cats,kernel="polynomial")
+# Plot the decision boundaries
+# X's are support vectors, O's are not
+plot(m, cats)
+# What if we use a different kernel? Or change the bandwidth?
+
+
+m <- svm(Sex~., data = cats,kernel="sigmoid")
+# Plot the decision boundaries
+# X's are support vectors, O's are not
+plot(m, cats)
+
+
+
+####################################################
+# Regression 
+####################################################
+
+
+setwd("~/Desktop/Data")
+cmb <- read.csv("cmb.csv")
+attach(cmb)
+plot(cmb)
+# Use a radial basis (Gaussian) kernel
+cmb.svm <- svm(Cl ~ ell,type="eps")
+lines(ell,cmb.svm$fitted,col="red",lwd=3)
+# Let's change the bandwidth...
+# Now do some polynomial kernels
+cmb.svm.pol.2 <- svm(Cl ~ ell,type="eps",kernel="polynomial",degree=2)
+cmb.svm.pol.3 <- svm(Cl ~ ell,type="eps",kernel="polynomial",degree=3)
+cmb.svm.pol.10 <- svm(Cl ~ ell,type="eps",kernel="polynomial",degree=10)
+lines(ell,cmb.svm.pol.2$fitted,col="blue",lwd=3,lty=2)
+lines(ell,cmb.svm.pol.3$fitted,col="green",lwd=3,lty=3)
+lines(ell,cmb.svm.pol.10$fitted,col="yellow",lwd=3,lty=4)
+```
+
+
+
+
+
